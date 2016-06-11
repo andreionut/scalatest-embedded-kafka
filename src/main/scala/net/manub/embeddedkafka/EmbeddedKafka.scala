@@ -139,7 +139,7 @@ sealed trait EmbeddedKafkaSupport {
   def consumeFirstStringMessageFrom(topic: String)(implicit config: EmbeddedKafkaConfig): String =
     consumeFirstMessageFrom[String](topic)(config, new StringDecoder())
 
-  def consumeStringMessagesFrom(topic: String)(implicit config: EmbeddedKafkaConfig): List[String] =
+  def consumeStringMessagesFrom(topic: String, n: Int)(implicit config: EmbeddedKafkaConfig): List[String] =
     consumeMessagesFrom[String](topic)(config, new StringDecoder())
 
   def consumeFirstMessageFrom[T](topic: String)(implicit config: EmbeddedKafkaConfig, decoder: Decoder[T]): T = {

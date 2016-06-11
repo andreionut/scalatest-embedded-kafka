@@ -187,14 +187,14 @@ class EmbeddedKafkaSpec extends EmbeddedKafkaSpecSupport with EmbeddedKafka {
     "throw a TimeoutExeption when a message is not available" in {
       withRunningKafka {
         a[TimeoutException] shouldBe thrownBy {
-          consumeStringMessagesFrom("non_existing_topic")
+          consumeStringMessagesFrom("non_existing_topic", 5)
         }
       }
     }
 
     "throw a KafkaUnavailableException when there's no running instance of Kafka" in {
       a[KafkaUnavailableException] shouldBe thrownBy {
-        consumeStringMessagesFrom("non_existing_topic")
+        consumeStringMessagesFrom("non_existing_topic", 5)
       }
     }
   }
