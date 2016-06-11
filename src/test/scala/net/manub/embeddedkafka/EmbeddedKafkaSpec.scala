@@ -5,7 +5,7 @@ import java.util.concurrent.TimeoutException
 
 import kafka.consumer.{Consumer, ConsumerConfig, Whitelist}
 import kafka.serializer.StringDecoder
-import org.apache.kafka.clients.producer.{KafkaProducer, ProducerConfig, ProducerRecord}
+import org.apache.kafka.clients.producer.{KafkaProducer, ProducerConfig, ProducerRecord, RecordMetadata}
 import org.apache.kafka.common.serialization.{ByteArraySerializer, StringSerializer}
 import org.scalatest.exceptions.TestFailedException
 import org.scalatest.time.{Milliseconds, Seconds, Span}
@@ -133,7 +133,73 @@ class EmbeddedKafkaSpec extends EmbeddedKafkaSpecSupport with EmbeddedKafka {
         producer.close()
       }
     }
+  }
 
+  "the consumeMessagesFrom method" should {
+    "return n messages published to a topic with implicit decoder" in {
+      withRunningKafka {
+        val messages = List("hello world!", "welcome to Kafka", "how are you?")
+        val topic = "test_topic"
+
+        val producer = new KafkaProducer[String, String](Map(
+          ProducerConfig.BOOTSTRAP_SERVERS_CONFIG -> s"localhost:6001",
+          ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG -> classOf[StringSerializer].getName,
+          ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG -> classOf[StringSerializer].getName
+        ))
+
+        import Codecs._
+        whenReady {
+          Future( messages.map { message => producer.send(new ProducerRecord[String, String](topic, message)).futureValue })
+        } { _ =>
+          val receivedMessages = consumeMessagesFrom[Array[Byte]](topic, messages.size)
+          receivedMessages should have length messages.size
+          receivedMessages should contain theSameElementsAs messages.map(_.getBytes)
+        }
+
+        producer.close()
+      }
+    }
+
+    "return n messages published to a topic with custom decoder" in {
+      import avro._
+      withRunningKafka {
+
+        val messages = List(TestAvroClass("name"), TestAvroClass("name2"))
+        val topic = "test_topic"
+        implicit val testAvroClassDecoder = specificAvroDecoder[TestAvroClass](TestAvroClass.SCHEMA$)
+
+        val producer = new KafkaProducer[String, TestAvroClass](Map(
+          ProducerConfig.BOOTSTRAP_SERVERS_CONFIG -> s"localhost:6001"
+        ), new StringSerializer, specificAvroSerializer[TestAvroClass])
+
+        whenReady{
+          Future( messages.map { message => producer.send(new ProducerRecord(topic, message)).futureValue })
+        } { _ =>
+          val receivedMessages = consumeMessagesFrom[TestAvroClass](topic, messages.size)
+          receivedMessages should have length messages.size
+          receivedMessages should contain theSameElementsAs messages
+        }
+
+        producer.close()
+      }
+    }
+
+    "throw a TimeoutExeption when a message is not available" in {
+      withRunningKafka {
+        a[TimeoutException] shouldBe thrownBy {
+          consumeStringMessagesFrom("non_existing_topic")
+        }
+      }
+    }
+
+    "throw a KafkaUnavailableException when there's no running instance of Kafka" in {
+      a[KafkaUnavailableException] shouldBe thrownBy {
+        consumeStringMessagesFrom("non_existing_topic")
+      }
+    }
+  }
+
+  "the consumeFirstMessageFrom method" should {
     "return a message published to a topic with implicit decoder" in {
       withRunningKafka {
         val message = "hello world!"
@@ -155,7 +221,6 @@ class EmbeddedKafkaSpec extends EmbeddedKafkaSpecSupport with EmbeddedKafka {
     }
 
     "return a message published to a topic with custom decoder" in {
-
       import avro._
       withRunningKafka {
 
@@ -172,20 +237,6 @@ class EmbeddedKafkaSpec extends EmbeddedKafkaSpecSupport with EmbeddedKafka {
         }
 
         producer.close()
-      }
-    }
-
-    "throw a TimeoutExeption when a message is not available" in {
-      withRunningKafka {
-        a[TimeoutException] shouldBe thrownBy {
-          consumeFirstStringMessageFrom("non_existing_topic")
-        }
-      }
-    }
-
-    "throw a KafkaUnavailableException when there's no running instance of Kafka" in {
-      a[KafkaUnavailableException] shouldBe thrownBy {
-        consumeFirstStringMessageFrom("non_existing_topic")
       }
     }
   }

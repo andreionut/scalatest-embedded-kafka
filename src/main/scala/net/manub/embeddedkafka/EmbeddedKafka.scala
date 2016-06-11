@@ -137,11 +137,17 @@ sealed trait EmbeddedKafkaSupport {
   }
 
   def consumeFirstStringMessageFrom(topic: String)(implicit config: EmbeddedKafkaConfig): String =
-    consumeFirstMessageFrom(topic)(config, new StringDecoder())
+    consumeFirstMessageFrom[String](topic)(config, new StringDecoder())
 
+  def consumeStringMessagesFrom(topic: String)(implicit config: EmbeddedKafkaConfig): List[String] =
+    consumeMessagesFrom[String](topic)(config, new StringDecoder())
+
+  def consumeFirstMessageFrom[T](topic: String)(implicit config: EmbeddedKafkaConfig, decoder: Decoder[T]): T = {
+    consumeMessagesFrom[T](topic)(config, decoder).head
+  }
 
   /**
-    * Consumes the first message available in a given topic, deserializing it as a String.
+    * Consumes the first `n` message available in a given topic, deserializing it as a T.
     *
     * @param topic the topic to consume a message from
     * @param config an implicit [[EmbeddedKafkaConfig]]
@@ -152,7 +158,7 @@ sealed trait EmbeddedKafkaSupport {
     */
   @throws(classOf[TimeoutException])
   @throws(classOf[KafkaUnavailableException])
-  def consumeFirstMessageFrom[T](topic: String)(implicit config: EmbeddedKafkaConfig, decoder: Decoder[T]): T = {
+  def consumeMessagesFrom[T](topic: String, n: Int = 1)(implicit config: EmbeddedKafkaConfig, decoder: Decoder[T]): List[T] = {
     val props = new Properties()
     props.put("group.id", s"embedded-kafka-spec")
     props.put("zookeeper.connect", s"localhost:${config.zooKeeperPort}")
@@ -171,7 +177,11 @@ sealed trait EmbeddedKafkaSupport {
 
     val messageFuture = Future {
       messageStreams.headOption
-        .getOrElse(throw new KafkaSpecException("Unable to find a message stream")).iterator().next().message()
+        .getOrElse(throw new KafkaSpecException("Unable to find a message stream"))
+        .iterator()
+        .take(n)
+        .map(_.message())
+        .toList
     }
 
     try {
